@@ -107,3 +107,43 @@ test("realized P&L matches confirmed sells against FIFO buy costs", () => {
     db.close();
   }
 });
+
+test("realized P&L keeps case-distinct Solana mints separate", () => {
+  const db = openDb(":memory:");
+  try {
+    const insertTrade = db.prepare(
+      `INSERT INTO trade_lifecycle
+        (id, user_id, chain, wallet_address, side, source, asset, amount, status, transaction_ref,
+         created_at, updated_at, confirmed_at)
+       VALUES (?, 'u1', 'solana', 'wallet', ?, 'manual', ?, '1', 'confirmed', ?, ?, ?, ?)`
+    );
+    const now = Date.now();
+    insertTrade.run("buy-sol", "buy", "MintCaseA", "tx-buy", now, now, now);
+    insertTrade.run("sell-sol", "sell", "mintcasea", "tx-sell", now + 1, now + 1, now + 1);
+    recordTradeFill(db, {
+      lifecycleId: "buy-sol",
+      userId: "u1",
+      chain: "solana",
+      asset: "MintCaseA",
+      tokenDecimals: 0,
+      tokenUnits: "100",
+      nativeUnits: "10",
+    });
+    recordTradeFill(db, {
+      lifecycleId: "sell-sol",
+      userId: "u1",
+      chain: "solana",
+      asset: "mintcasea",
+      tokenDecimals: 0,
+      tokenUnits: "100",
+      nativeUnits: "30",
+    });
+
+    const pnl = getRealizedPnl(db, "u1");
+    assert.equal(pnl[0].realizedUnits, 0n);
+    assert.equal(pnl[0].matchedSells, 0);
+    assert.equal(pnl[0].unmatchedSells, 1);
+  } finally {
+    db.close();
+  }
+});

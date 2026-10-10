@@ -40,7 +40,6 @@ export function startTradeReconciler(
                 updateTradeLifecycle(db, trade.id, "confirmed");
               }
             }
-            await captureConfirmedTradeFills(db, solConnection, evmProvider);
           } else if (trade.transaction_ref) {
             const result = await solConnection.getSignatureStatuses(
               [trade.transaction_ref],
@@ -64,6 +63,7 @@ export function startTradeReconciler(
           console.error(`[transactions] reconciliation failed for ${trade.id}:`, err);
         }
       }
+      await captureConfirmedTradeFills(db, solConnection, evmProvider);
     } catch (err) {
       console.error("[transactions] reconciliation batch failed:", err);
     } finally {

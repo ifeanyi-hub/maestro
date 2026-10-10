@@ -29,7 +29,7 @@ export function getRealizedPnl(db: Database.Database, userId: string): RealizedP
 
     for (const fill of fills.filter((row) => row.chain === chain)) {
       confirmedFills++;
-      const key = fill.asset.toLowerCase();
+      const key = fill.chain === "evm" ? fill.asset.toLowerCase() : fill.asset;
       const assetLots = lots.get(key) ?? [];
       if (fill.side === "buy") {
         assetLots.push({
