@@ -35,17 +35,26 @@ export function styleBotResponse(
     : styled;
 }
 
-export function startWelcome(firstName: string, requiresApproval: boolean): string {
+export function startWelcome(
+  firstName: string,
+  requiresApproval: boolean,
+  requiresWallet = requiresApproval,
+): string {
   const greeting = firstName.trim() || "trader";
   return [
     `✨ Welcome, ${greeting}, to Maestro — your on-chain trading desk!`,
     "",
-    "Explore chains, wallets, settings, premium price signals, auto-snipe, copy trading, orders, and positions. Browse curated presales, track referrals, or request a quote-only bridge route below.",
+    "Explore chain options; manage wallets and portfolio; trade with fresh quotes and confirmation; set risk limits; create token snipes and limit orders; configure copy trading; view positions, recent trades, and price signals; subscribe to Premium for price alerts and realized P&L; browse curated presales; track referrals; request quote-only bridge routes. Admins also get moderation and stats tools.",
     "",
-    "⚡ For a quick buy or sell, tap BUY & SELL NOW. Every trade is quoted and requires your confirmation.",
+    "⚡ For a quick trade, tap BUY & SELL NOW. Every trade needs a fresh quote and your confirmation. Bridge routes are quote-only; no bridge transaction is signed or submitted.",
+    "Solana and Ethereum mainnet are connected. Other EVM networks in the chain picker are preview-only; network-specific transactions are not enabled yet.",
     requiresApproval
-      ? "Import a wallet and wait for admin approval to unlock account features."
-      : "Choose a section below to get started.",
+      ? requiresWallet
+        ? "Choose a network and import a wallet. An admin must approve your account before features unlock."
+        : "Your wallet is imported. Wait for admin approval before using account features."
+      : requiresWallet
+        ? "Choose a network and import a wallet to unlock account features."
+        : "Choose a section below to get started.",
   ].join("\n");
 }
 

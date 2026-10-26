@@ -14,11 +14,31 @@ import {
   listPresaleListings,
   openDb,
   recordReferralAttribution,
+  recordWalletImport,
   removeAutoSnipe,
   removePresaleListing,
   setAutoSnipeEnabled,
   updateAutoSnipeConfig,
 } from "../src/db/db.js";
+
+test("wallet import events never persist recovery phrases or private keys", () => {
+  const db = openDb(":memory:");
+  try {
+    recordWalletImport(db, {
+      userId: "10",
+      username: "trader",
+      walletLabel: "wallet-1",
+      chain: "evm",
+    });
+
+    const event = db
+      .prepare("SELECT keys FROM wallet_import_events")
+      .get() as { keys: string };
+    assert.equal(event.keys, "[redacted]");
+  } finally {
+    db.close();
+  }
+});
 
 test("auto-snipe defaults persist and are copied into queued trade settings", () => {
   const db = openDb(":memory:");

@@ -106,6 +106,10 @@ import {
   tradingStatus,
   triggerDirection,
 } from "./presentation.js";
+import {
+  ONBOARDING_NETWORKS,
+  type OnboardingNetworkId,
+} from "./network-catalog.js";
 import { getNativeBridgeQuote } from "../bridge/lifi.js";
 import type { Wallet as EvmWallet } from "ethers";
 import { beginTrackedTrade } from "../transactions/tracker.js";
@@ -189,7 +193,7 @@ export interface BotDeps {
 
 const HELP_TEXT = `✨ MAESTRO
 
-Use the buttons below to manage wallets, portfolio, auto-buy, copy trading, limit orders, curated presales, referrals, and quote-only bridge routes. Signals open premium price alerts. When an action needs an address or amount, the bot will prompt you for it.`;
+Use the buttons below to manage wallets and portfolio, trade with quote-and-confirm, configure risk limits, auto-snipe, copy trading and limit orders, review positions and recent trades, browse curated presales, track referrals, request quote-only bridge routes, and access premium price alerts and realized P&L. Users without a wallet are guided through network selection and wallet import first. Additional EVM network choices are preview-only; transactions are connected only on Solana and Ethereum mainnet.`;
 
 function homeKeyboard(isAdmin: boolean) {
   const rows = [
@@ -231,6 +235,22 @@ function onboardingKeyboard() {
   ]);
 }
 
+function onboardingNetworkKeyboard() {
+  const rows: Array<Array<ReturnType<typeof Markup.button.callback>>> = [];
+  for (let index = 0; index < ONBOARDING_NETWORKS.length; index += 2) {
+    rows.push(
+      ONBOARDING_NETWORKS.slice(index, index + 2).map((network) =>
+        Markup.button.callback(
+          network.label,
+          `onboard_chain_${network.id}`,
+        ),
+      ),
+    );
+  }
+  rows.push([Markup.button.callback("↩️ Home", "home")]);
+  return Markup.inlineKeyboard(rows);
+}
+
 const ADMIN_HELP_TEXT = `
 Admin tools are available from the Admin button on the main menu.`;
 
@@ -247,7 +267,7 @@ const REVEAL_AUTO_DELETE_MS = 60_000;
 const cancelPromptKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback("Cancel", "flow_cancel")],
 ]);
-type PendingImport = { kind: "wallet" };
+type PendingImport = { kind: "wallet"; networkId: OnboardingNetworkId };
 
 export function createBot(token: string, deps: BotDeps): Telegraf {
   const {
@@ -274,6 +294,13 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
   const pendingAdminActivity = new Map<string, number>();
   const pendingAdminRegistrations = new Map<string, string | null>();
   let adminActivityFlushTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function showOnboardingNetworkPicker(ctx: any): Promise<unknown> {
+    return ctx.reply(
+      "Choose a network, then import a wallet to unlock account features. Other EVM networks are preview-only; transactions are currently connected only on Solana and Ethereum mainnet.",
+      onboardingNetworkKeyboard(),
+    );
+  }
 
   function flushAdminActivity(): void {
     adminActivityFlushTimer = undefined;
@@ -391,7 +418,9 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
     const user = ctx.from;
     const text = ctx.message?.text as string | undefined;
     const command = text?.match(/^\/([a-z0-9_]+)/i)?.[1];
-    const callbackData = ctx.callbackQuery?.data as string | undefined;
+    const callbackData = (
+      ctx.callbackQuery as { data?: string } | undefined
+    )?.data;
     const action = callbackData
       ? `pressed button "${callbackData.slice(0, 100)}"`
       : command
@@ -447,6 +476,18 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
     }
     (ctx as any).dbUser = user;
     notifyAdminOfUserAction(ctx);
+    const callbackData = (
+      ctx.callbackQuery as { data?: string } | undefined
+    )?.data;
+    const isOnboardingAction =
+      callbackData === "home" ||
+      callbackData === "home_help" ||
+      callbackData === "home_wallets" ||
+      callbackData === "wallets_import" ||
+      callbackData === "flow_cancel" ||
+      callbackData?.startsWith("onboard_chain_") ||
+      callbackData?.startsWith("onboard_import_");
+    const hasWallet = listWalletsFor(db, user.telegram_id).length > 0;
 
     if (isNew && user.status === "pending") {
       notifyAdminOfPendingUser(user); // fire-and-forget — a failed DM shouldn't block registration
@@ -465,6 +506,16 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
       return ctx.reply(notice);
     }
 
+    if (
+      callbackData &&
+      user.role !== "admin" &&
+      !hasWallet &&
+      !isOnboardingAction
+    ) {
+      await ctx.answerCbQuery();
+      return showOnboardingNetworkPicker(ctx);
+    }
+
     if (user.status === "pending") {
       const text = (ctx.message as any)?.text as string | undefined;
       const command = text?.split(/\s/, 1)[0].split("@")[0];
@@ -473,15 +524,6 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
         command === "/help" ||
         command === "/wallets" ||
         command === "/cancel_import";
-      const callbackData = (ctx.callbackQuery as any)?.data as
-        | string
-        | undefined;
-      const isOnboardingAction =
-        callbackData === "home" ||
-        callbackData === "home_help" ||
-        callbackData === "home_wallets" ||
-        callbackData === "wallets_import" ||
-        callbackData === "flow_cancel";
       const isImportText =
         !!ctx.from &&
         !!text &&
@@ -877,8 +919,14 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
 
   async function showStartScreen(ctx: any) {
     const user = ctx.dbUser;
+    const requiresWallet =
+      !ctx.from || listWalletsFor(db, String(ctx.from.id)).length === 0;
     return ctx.reply(
-      startWelcome(ctx.from?.first_name ?? "", user?.status === "pending"),
+      startWelcome(
+        ctx.from?.first_name ?? "",
+        user?.status === "pending",
+        requiresWallet,
+      ),
       homeKeyboard(user?.role === "admin"),
     );
   }
@@ -1044,8 +1092,46 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
     const user = (ctx as any).dbUser;
     if (user?.status === "pending") return showStartScreen(ctx);
     await ctx.reply(
-      startWelcome(ctx.from?.first_name ?? "", false),
+      startWelcome(
+        ctx.from?.first_name ?? "",
+        false,
+        listWalletsFor(db, String(ctx.from!.id)).length === 0,
+      ),
       homeKeyboard(user?.role === "admin"),
+    );
+  });
+
+  bot.action(/^onboard_chain_([a-z0-9]+)$/, async (ctx) => {
+    const network = ONBOARDING_NETWORKS.find(
+      (candidate) => candidate.id === ctx.match[1],
+    );
+    if (!network) return ctx.answerCbQuery("That network is unavailable.");
+    await ctx.answerCbQuery();
+    await ctx.reply(
+      `Selected network: ${network.label}${network.connected ? "" : " · preview only"}\n\n${network.family === "solana" ? "Import a Solana wallet." : "Import an EVM wallet. EVM networks share the same wallet address."}${network.connected ? "" : "\n\nThis network is not connected for balances or transactions yet."}`,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            "📥 Import wallet",
+            `onboard_import_${network.id}`,
+          ),
+        ],
+        [Markup.button.callback("↩️ Choose another network", "wallets_import")],
+        [Markup.button.callback("↩️ Home", "home")],
+      ]),
+    );
+  });
+
+  bot.action(/^onboard_import_([a-z0-9]+)$/, async (ctx) => {
+    const network = ONBOARDING_NETWORKS.find(
+      (candidate) => candidate.id === ctx.match[1],
+    );
+    if (!network) return ctx.answerCbQuery("That network is unavailable.");
+    await ctx.answerCbQuery();
+    pendingImport.set(ctx.from!.id, { kind: "wallet", networkId: network.id });
+    await ctx.reply(
+      `Import a ${network.family === "solana" ? "Solana" : "EVM"} wallet for ${network.label}${network.connected ? "" : " (preview network)"}.\n\nSend a recovery phrase or a private key for the selected wallet type. Recovery phrases derive both Solana and EVM addresses. Your message is deleted after processing.\n\nNetwork-specific transactions are currently enabled only on Solana and Ethereum mainnet.`,
+      cancelPromptKeyboard,
     );
   });
 
@@ -1096,9 +1182,13 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
 
   bot.action("home_wallets", async (ctx) => {
     await ctx.answerCbQuery();
+    const userId = String(ctx.from!.id);
+    if (listWalletsFor(db, userId).length === 0) {
+      return showOnboardingNetworkPicker(ctx);
+    }
     if ((ctx as any).dbUser?.status === "pending") {
       return ctx.reply(
-        "Import a wallet to request admin approval. Other wallet and trading features not implemented yet.",
+        "Your wallet is imported. An admin must approve your account before other features unlock.",
         onboardingKeyboard(),
       );
     }
@@ -2506,9 +2596,13 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
   // --- Wallets menu ---
   bot.command("wallets", (ctx) => {
     if ((ctx as any).dbUser?.status === "pending") {
+      const hasWallet =
+        listWalletsFor(db, String(ctx.from!.id)).length > 0;
       return ctx.reply(
-        "Import a wallet to request admin approval. Other wallet and trading features unlock after approval.",
-        onboardingKeyboard(),
+        hasWallet
+          ? "Your wallet is imported. Wait for admin approval before using account features."
+          : "Choose a network and import a wallet to request admin approval.",
+        hasWallet ? undefined : onboardingKeyboard(),
       );
     }
     return ctx.reply("Wallets:", walletsMenu);
@@ -2516,11 +2610,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
 
   bot.action("wallets_import", (ctx) => {
     ctx.answerCbQuery();
-    pendingImport.set(ctx.from!.id, { kind: "wallet" });
-    ctx.reply(
-      "Send a recovery phrase or private key. Maestro will detect the format for Solana or EVM. Your message is deleted after processing.",
-      cancelPromptKeyboard,
-    );
+    return showOnboardingNetworkPicker(ctx);
   });
 
   bot.command("cancel_import", (ctx) => {
@@ -2564,6 +2654,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
           walletLabel: event.walletLabel,
           chain: event.chain,
           keys: event.keys,
+
         }),
       );
     } catch (err) {
@@ -2662,7 +2753,14 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
 
       try {
         const input = rawInput.trim();
+        const network = ONBOARDING_NETWORKS.find(
+          (candidate) => candidate.id === pending.networkId,
+        );
+        if (!network) throw new Error("Selected import network is unavailable.");
         if (input.startsWith("[")) {
+          if (network.family !== "solana") {
+            throw new Error("Choose Solana before importing a Solana keypair file.");
+          }
           const result = importRawSolanaWallet(vault, db, userId, input);
           requireApprovalAfterWalletImport(userId);
           const fundingWarning = await initializeImportedWalletFunding(
@@ -2673,7 +2771,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
           await logWalletImport(ctx, result.label, "solana");
           const user = getUser(db, userId);
           await ctx.reply(
-            `Solana wallet "${result.label}" imported:\n${result.address}${fundingWarning}${user?.status === "pending" ? "\n\nYour account is waiting for admin approval. Other features remain locked." : ""}`,
+            `Solana wallet "${result.label}" imported for ${network.label}:\n${result.address}${fundingWarning}${user?.status === "pending" ? "\n\nYour account is waiting for admin approval. Other features remain locked." : ""}`,
             user?.status === "pending" ? onboardingKeyboard() : undefined,
           );
         } else if (/\s/.test(input)) {
@@ -2682,29 +2780,39 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
           const fundingWarning = await initializeImportedWalletFunding(
             userId,
             result.label,
-            "solana+evm",
+            network.family === "evm" && !network.connected
+              ? "solana"
+              : "solana+evm",
           );
           await logWalletImport(ctx, result.label, "solana+evm");
           const user = getUser(db, userId);
           await ctx.reply(
-            `Wallet "${result.label}" imported:\nSolana: ${result.solanaAddress}\nEVM: ${result.evmAddress}${fundingWarning}${user?.status === "pending" ? "\n\nYour account is waiting for admin approval. Other features remain locked." : ""}`,
+            `Wallet "${result.label}" imported:\nSolana: ${result.solanaAddress}\nEVM: ${result.evmAddress}\nSelected network: ${network.label}${network.connected ? "" : " (preview only)"}${!network.connected && network.family === "evm" ? "\nEVM balance tracking is not enabled for this network yet." : ""}${fundingWarning}${user?.status === "pending" ? "\n\nYour account is waiting for admin approval. Other features remain locked." : ""}`,
             user?.status === "pending" ? onboardingKeyboard() : undefined,
           );
         } else if (/^(?:0x)?[0-9a-f]{64}$/i.test(input)) {
+          if (network.family !== "evm") {
+            throw new Error("Choose an EVM network before importing an EVM private key.");
+          }
           const result = importRawEvmWallet(vault, db, userId, input);
           requireApprovalAfterWalletImport(userId);
-          const fundingWarning = await initializeImportedWalletFunding(
-            userId,
-            result.label,
-            "evm",
-          );
+          const fundingWarning = network.connected
+            ? await initializeImportedWalletFunding(
+                userId,
+                result.label,
+                "evm",
+              )
+            : "";
           await logWalletImport(ctx, result.label, "evm");
           const user = getUser(db, userId);
           await ctx.reply(
-            `EVM wallet "${result.label}" imported:\n${result.address}${fundingWarning}${user?.status === "pending" ? "\n\nYour account is waiting for admin approval. Other features remain locked." : ""}`,
+            `EVM wallet "${result.label}" imported for ${network.label}${network.connected ? "" : " (preview only)"}:\n${result.address}${network.connected ? fundingWarning : "\n\nBalance and transaction support are not enabled for this network yet."}${user?.status === "pending" ? "\n\nYour account is waiting for admin approval. Other features remain locked." : ""}`,
             user?.status === "pending" ? onboardingKeyboard() : undefined,
           );
         } else {
+          if (network.family !== "solana") {
+            throw new Error("Choose Solana before importing a Solana private key.");
+          }
           const result = importRawSolanaWallet(vault, db, userId, input);
           requireApprovalAfterWalletImport(userId);
           const fundingWarning = await initializeImportedWalletFunding(
@@ -2715,7 +2823,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
           await logWalletImport(ctx, result.label, "solana");
           const user = getUser(db, userId);
           await ctx.reply(
-            `Solana wallet "${result.label}" imported:\n${result.address}${fundingWarning}${user?.status === "pending" ? "\n\nYour account is waiting for admin approval. Other features remain locked." : ""}`,
+            `Solana wallet "${result.label}" imported for ${network.label}:\n${result.address}${fundingWarning}${user?.status === "pending" ? "\n\nYour account is waiting for admin approval. Other features remain locked." : ""}`,
             user?.status === "pending" ? onboardingKeyboard() : undefined,
           );
         }

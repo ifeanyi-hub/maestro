@@ -9,6 +9,7 @@ import {
   tradingStatus,
   triggerDirection,
 } from "../src/bot/presentation.js";
+import { ONBOARDING_NETWORKS } from "../src/bot/network-catalog.js";
 
 test("plain bot replies receive a visual marker without duplicating existing styling", () => {
   assert.equal(styleBotResponse("Wallet imported."), "✦ Wallet imported.");
@@ -36,26 +37,42 @@ test("response styling preserves formatted text entities", () => {
 });
 
 test("start welcome stays consistent while explaining account access", () => {
-  const activeWelcome = startWelcome("justincallz", false);
-  const pendingWelcome = startWelcome("justincallz", true);
+  const activeWelcome = startWelcome("justincallz", false, false);
+  const pendingWelcome = startWelcome("justincallz", true, true);
 
   assert.equal(
-    activeWelcome.split("\n").slice(0, -1).join("\n"),
-    pendingWelcome.split("\n").slice(0, -1).join("\n"),
+    activeWelcome.split("\n").slice(0, 6).join("\n"),
+    pendingWelcome.split("\n").slice(0, 6).join("\n"),
   );
   assert.match(activeWelcome, /✨ Welcome, justincallz, to Maestro/);
   assert.match(activeWelcome, /curated presales/);
-  assert.match(activeWelcome, /quote-only bridge route/);
+  assert.match(activeWelcome, /quote-only/);
+  assert.match(activeWelcome, /risk limits/);
+  assert.match(activeWelcome, /price signals/);
   assert.match(activeWelcome, /BUY & SELL NOW/);
   assert.match(activeWelcome, /Choose a section below to get started\./);
   assert.match(pendingWelcome, /✨ Welcome, justincallz, to Maestro/);
+  assert.match(pendingWelcome, /Choose a network and import a wallet/);
+  assert.match(pendingWelcome, /admin must approve your account/);
   assert.match(
-    pendingWelcome,
-    /Import a wallet and wait for admin approval/,
+    startWelcome("justincallz", false, true),
+    /import a wallet to unlock account features/,
   );
   assert.equal(
     startWelcome("  ", false).startsWith("✨ Welcome, trader, to Maestro"),
     true,
+  );
+});
+
+test("onboarding shows twenty unique networks without claiming preview support", () => {
+  assert.equal(ONBOARDING_NETWORKS.length, 20);
+  assert.equal(
+    new Set(ONBOARDING_NETWORKS.map((network) => network.id)).size,
+    20,
+  );
+  assert.equal(
+    ONBOARDING_NETWORKS.filter((network) => network.connected).map((network) => network.id).join(","),
+    "solana,ethereum",
   );
 });
 
