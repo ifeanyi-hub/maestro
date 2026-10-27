@@ -1,27 +1,23 @@
 import { Connection } from "@solana/web3.js";
+import { DEFAULT_RPC_ENDPOINTS } from "../../config/defaults.js";
 
 /**
- * Same failure class as chains/evm/provider.ts: a WebSocket connection
- * failure emits an unhandled 'error' event and crashes the whole process if
- * nothing's listening. @solana/web3.js doesn't expose a public API for this
- * — `_rpcWebSocket` is an internal, undocumented property (the underlying
- * rpc-websockets Client, which is a plain EventEmitter), but attaching to it
- * is a long-standing, widely-used workaround in the Solana ecosystem for
- * exactly this crash. If a future @solana/web3.js version renames or
- * removes it, this handler silently stops attaching — worth a smoke test
- * after any @solana/web3.js version bump.
+ * @solana/web3.js doesn't expose a public API for WebSocket errors, so this
+ * attaches to its internal rpc-websockets client to keep connection errors
+ * from crashing the Telegram bot. If a future version renames or removes
+ * `_rpcWebSocket`, the handler will need updating.
  */
-export function getSolanaConnection(): Connection {
-  const http = process.env.SOLANA_RPC_HTTP!;
-  const wss = process.env.SOLANA_RPC_WSS!;
+export function getSolanaConnection(
+  http: string = DEFAULT_RPC_ENDPOINTS.solanaHttp,
+  wss: string = DEFAULT_RPC_ENDPOINTS.solanaWebSocket,
+): Connection {
   const connection = new Connection(http, { commitment: "confirmed", wsEndpoint: wss });
 
   (connection as any)._rpcWebSocket?.on("error", (err: Error) => {
     console.error(
       `[solana] WebSocket connection failed: ${err.message}\n` +
-        "Check SOLANA_RPC_WSS in .env — public endpoints are often unreliable for a persistent connection. Get a free-tier key from Helius or Triton instead."
+        "The bot will stay online, but Solana event listening may be unavailable until the provider reconnects or the bot is restarted. Configure SOLANA_RPC_WSS for a more reliable connection."
     );
-    process.exit(1);
   });
 
   return connection;

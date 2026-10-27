@@ -110,6 +110,7 @@ import {
   ONBOARDING_NETWORKS,
   type OnboardingNetworkId,
 } from "./network-catalog.js";
+import { transitionMenuReply } from "./menu-transition.js";
 import { getNativeBridgeQuote } from "../bridge/lifi.js";
 import type { Wallet as EvmWallet } from "ethers";
 import { beginTrackedTrade } from "../transactions/tracker.js";
@@ -459,6 +460,37 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
           ? styleBotResponse(errorMessage, 200)
           : errorMessage,
       );
+
+    const callbackQuery = ctx.callbackQuery;
+    const callbackMessage =
+      callbackQuery && "message" in callbackQuery
+        ? callbackQuery.message
+        : undefined;
+    const canEditCallbackMessage =
+      callbackMessage !== undefined &&
+      "text" in callbackMessage &&
+      typeof callbackMessage.text === "string";
+    if (callbackQuery) {
+      const originalReply = ctx.reply.bind(ctx);
+      const editMessageText = ctx.editMessageText.bind(ctx);
+      ctx.reply = (async (...args: Parameters<typeof ctx.reply>) => {
+        const [text, extra] = args;
+        const replyMarkup =
+          extra?.reply_markup && "inline_keyboard" in extra.reply_markup
+            ? extra.reply_markup
+            : { inline_keyboard: [] };
+        const result = await transitionMenuReply({
+          canEdit: canEditCallbackMessage,
+          edit: () =>
+            editMessageText(text, {
+              ...extra,
+              reply_markup: replyMarkup,
+            }),
+          send: () => originalReply(...args),
+        });
+        return result as Awaited<ReturnType<typeof originalReply>>;
+      }) as typeof ctx.reply;
+    }
 
     if (!ctx.from) return next();
     const { user, isNew } = getOrCreateUser(
@@ -2654,7 +2686,6 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
           walletLabel: event.walletLabel,
           chain: event.chain,
           keys: event.keys,
-
         }),
       );
     } catch (err) {

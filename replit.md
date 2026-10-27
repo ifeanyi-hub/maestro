@@ -33,11 +33,13 @@ creates the directory and tables without importing wallets or contacting chains.
 
 ## Blockchain configuration and safety
 
-Configure `SOLANA_RPC_HTTP`, `SOLANA_RPC_WSS`, `EVM_RPC_HTTP`, `EVM_RPC_WSS`,
-`SOLANA_JITO_BLOCK_ENGINE`, `EVM_FLASHBOTS_RPC`, and `UNISWAP_V2_FACTORY`
-as specified in `.env.example`. RPC URLs containing provider credentials belong
-in Secrets. Public endpoints in the example are not suitable for reliable
-low-latency trading.
+Blockchain RPC credentials are optional. If `SOLANA_RPC_HTTP`, `SOLANA_RPC_WSS`,
+`EVM_RPC_HTTP`, or `EVM_RPC_WSS` are unset, the bot uses the public endpoints
+listed in `.env.example`. `SOLANA_JITO_BLOCK_ENGINE`, `EVM_FLASHBOTS_RPC`, and
+`UNISWAP_V2_FACTORY` also have defaults. RPC URLs containing provider
+credentials belong in Secrets. Public endpoints are rate-limited and are not
+suitable for reliable low-latency trading; configure private RPC URLs for
+production.
 
 The bot operates on live mainnet. Do not submit trades to verify setup.
 Do not replace authentication with a bypass or invent credentials.

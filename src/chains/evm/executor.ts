@@ -1,5 +1,6 @@
 import { Contract, Wallet, JsonRpcProvider, parseEther, isAddress, keccak256 } from "ethers";
 import type { TradeLifecycleObserver } from "../../transactions/types.js";
+import { DEFAULT_RPC_ENDPOINTS } from "../../config/defaults.js";
 
 const UNISWAP_V2_ROUTER = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 const ROUTER_ABI = [
@@ -235,7 +236,9 @@ export async function executeSell(params: EvmSellParams): Promise<string> {
 }
 
 async function sendViaPrivateRelay(signedTx: string): Promise<string> {
-  const res = await fetch(process.env.EVM_FLASHBOTS_RPC!, {
+  const relay =
+    process.env.EVM_FLASHBOTS_RPC?.trim() || DEFAULT_RPC_ENDPOINTS.evmFlashbots;
+  const res = await fetch(relay, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

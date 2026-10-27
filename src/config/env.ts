@@ -1,5 +1,6 @@
 import { isAddress } from "ethers";
 import { parseUnitsExact } from "../shared/amount.js";
+import { DEFAULT_RPC_ENDPOINTS } from "./defaults.js";
 
 export interface AppConfig {
   telegramBotToken: string;
@@ -20,21 +21,21 @@ export interface AppConfig {
   tradeQuoteTtlSeconds: number;
 }
 
-function readUrl(
+function readOptionalUrl(
   env: NodeJS.ProcessEnv,
   name: string,
+  fallback: string,
   protocols: string[],
-  errors: string[]
+  errors: string[],
 ): string {
   const value = env[name]?.trim();
-  if (!value) {
-    errors.push(`${name} is required.`);
-    return "";
-  }
+  if (!value) return fallback;
 
   try {
     const url = new URL(value);
-    if (!protocols.includes(url.protocol)) errors.push(`${name} must use ${protocols.join(" or ")}.`);
+    if (!protocols.includes(url.protocol)) {
+      errors.push(`${name} must use ${protocols.join(" or ")}.`);
+    }
   } catch {
     errors.push(`${name} must be a valid URL.`);
   }
@@ -62,19 +63,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const telegramBotToken = env.TELEGRAM_BOT_TOKEN?.trim() ?? "";
   const telegramOwnerId = env.TELEGRAM_OWNER_ID?.trim() ?? "";
   const vaultMasterKey = env.VAULT_MASTER_KEY?.trim() ?? "";
-  const uniswapV2Factory = env.UNISWAP_V2_FACTORY?.trim() ?? "";
+  const uniswapV2Factory =
+    env.UNISWAP_V2_FACTORY?.trim() || DEFAULT_RPC_ENDPOINTS.uniswapV2Factory;
 
   if (!telegramBotToken) errors.push("TELEGRAM_BOT_TOKEN is required.");
   if (!/^\d+$/.test(telegramOwnerId)) errors.push("TELEGRAM_OWNER_ID must be a numeric Telegram user ID.");
   if (!/^[0-9a-fA-F]{64}$/.test(vaultMasterKey)) errors.push("VAULT_MASTER_KEY must be exactly 32 bytes encoded as 64 hexadecimal characters.");
   if (!isAddress(uniswapV2Factory)) errors.push("UNISWAP_V2_FACTORY must be a valid EVM address.");
 
-  const solanaRpcHttp = readUrl(env, "SOLANA_RPC_HTTP", ["http:", "https:"], errors);
-  const solanaRpcWss = readUrl(env, "SOLANA_RPC_WSS", ["ws:", "wss:"], errors);
-  const solanaJitoBlockEngine = readUrl(env, "SOLANA_JITO_BLOCK_ENGINE", ["http:", "https:"], errors);
-  const evmRpcHttp = readUrl(env, "EVM_RPC_HTTP", ["http:", "https:"], errors);
-  const evmRpcWss = readUrl(env, "EVM_RPC_WSS", ["ws:", "wss:"], errors);
-  const evmFlashbotsRpc = readUrl(env, "EVM_FLASHBOTS_RPC", ["http:", "https:"], errors);
+  const solanaRpcHttp = readOptionalUrl(env, "SOLANA_RPC_HTTP", DEFAULT_RPC_ENDPOINTS.solanaHttp, ["http:", "https:"], errors);
+  const solanaRpcWss = readOptionalUrl(env, "SOLANA_RPC_WSS", DEFAULT_RPC_ENDPOINTS.solanaWebSocket, ["ws:", "wss:"], errors);
+  const solanaJitoBlockEngine = readOptionalUrl(env, "SOLANA_JITO_BLOCK_ENGINE", DEFAULT_RPC_ENDPOINTS.solanaJitoBlockEngine, ["http:", "https:"], errors);
+  const evmRpcHttp = readOptionalUrl(env, "EVM_RPC_HTTP", DEFAULT_RPC_ENDPOINTS.evmHttp, ["http:", "https:"], errors);
+  const evmRpcWss = readOptionalUrl(env, "EVM_RPC_WSS", DEFAULT_RPC_ENDPOINTS.evmWebSocket, ["ws:", "wss:"], errors);
+  const evmFlashbotsRpc = readOptionalUrl(env, "EVM_FLASHBOTS_RPC", DEFAULT_RPC_ENDPOINTS.evmFlashbots, ["http:", "https:"], errors);
 
   const maxTradeSol = readPositiveAmount(env, "MAX_TRADE_SOL", "0.1", 9, errors);
   const maxTradeEth = readPositiveAmount(env, "MAX_TRADE_ETH", "0.05", 18, errors);

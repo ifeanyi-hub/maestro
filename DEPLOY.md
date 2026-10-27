@@ -4,11 +4,10 @@
 
 - Node.js 18+
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)
-- **Low-latency RPC access** — public RPCs will lose every race:
+- No blockchain provider API keys are required to start: the bot falls back to public Solana and Ethereum RPC/WebSocket endpoints and public Jito/Flashbots relays.
+- For production trading, configure reliable low-latency RPC endpoints; public RPCs may be rate-limited and are not suitable for winning launch races:
   - Solana: Helius or Triton (Geyser-backed)
-  - EVM: Alchemy or Infura (websocket-capable)
-- Jito block engine access (Solana bundle submission — no signup needed, just the endpoint)
-- Flashbots Protect RPC (EVM private tx submission — no signup needed)
+  - EVM: Alchemy, Infura, or another websocket-capable provider
 
 ## Setup
 
@@ -21,8 +20,8 @@ cp .env.example .env
 Fill in `.env`:
 - `TELEGRAM_BOT_TOKEN` — from BotFather
 - `TELEGRAM_OWNER_ID` — your numeric Telegram id, promotes you to admin on first contact (see the comment in `.env.example` for what this does and doesn't gate)
-- `SOLANA_RPC_HTTP` / `SOLANA_RPC_WSS` — your Helius/Triton endpoints
-- `EVM_RPC_HTTP` / `EVM_RPC_WSS` — your Alchemy/Infura endpoints
+- `SOLANA_RPC_HTTP` / `SOLANA_RPC_WSS` — optional overrides; public Solana endpoints are used when omitted.
+- `EVM_RPC_HTTP` / `EVM_RPC_WSS` — optional overrides; public Ethereum endpoints are used when omitted.
 - `MAX_TRADE_SOL` / `MAX_TRADE_ETH` — admin hard maximum spend for each buy, defaulting to `0.1` SOL / `0.05` ETH.
 - `MAX_DAILY_SPEND_SOL` / `MAX_DAILY_SPEND_ETH` — admin hard maximum buy spend per user and UTC day, defaulting to `1` SOL / `0.5` ETH. Personal limits are configurable in Telegram but cannot exceed these values.
 - `MAX_SLIPPAGE_BPS` — admin hard maximum slippage from 1 to 500 basis points (default `500`); users can set a lower ceiling.
@@ -35,6 +34,8 @@ Fill in `.env`:
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
+
+`SOLANA_JITO_BLOCK_ENGINE`, `EVM_FLASHBOTS_RPC`, and `UNISWAP_V2_FACTORY` also have defaults. If a chain WebSocket disconnects, the bot logs the affected listener error and keeps the Telegram bot running; restart or configure a more reliable endpoint to restore that listener if it does not reconnect.
 
 ## Run locally
 

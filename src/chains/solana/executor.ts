@@ -10,6 +10,7 @@ import { TxVersion, toBN } from "@raydium-io/raydium-sdk-v2";
 import { getRaydium } from "./raydiumClient.js";
 import bs58 from "bs58";
 import type { TradeLifecycleObserver } from "../../transactions/types.js";
+import { DEFAULT_RPC_ENDPOINTS } from "../../config/defaults.js";
 
 const WSOL_MINT = "So11111111111111111111111111111111111111";
 
@@ -173,7 +174,10 @@ function buildTipTransaction(
 
 async function sendViaJitoBundle(txs: VersionedTransaction[]): Promise<string> {
   const encoded = txs.map((tx) => Buffer.from(tx.serialize()).toString("base64"));
-  const res = await fetch(`${process.env.SOLANA_JITO_BLOCK_ENGINE}/api/v1/bundles`, {
+  const blockEngine =
+    process.env.SOLANA_JITO_BLOCK_ENGINE?.trim() ||
+    DEFAULT_RPC_ENDPOINTS.solanaJitoBlockEngine;
+  const res = await fetch(`${blockEngine}/api/v1/bundles`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
