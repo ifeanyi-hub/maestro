@@ -125,6 +125,10 @@ import {
   routeNoWalletCallback,
   routeNoWalletCommand,
 } from "./no-wallet-routing.js";
+import {
+  formatAdminUserText,
+  isWalletSecret,
+} from "./admin-user-message.js";
 
 const USER_COMMANDS = [
   { command: "start", description: "Open the Maestro menu" },
@@ -452,6 +456,23 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
       .filter(Boolean)
       .join(" · ");
     addAdminActivity(`${identity} ${action}.`);
+
+    if (
+      text !== undefined &&
+      !pendingImport.has(ctx.from.id) &&
+      !isWalletSecret(text)
+    ) {
+      for (const message of formatAdminUserText(identity, user.id, text)) {
+        void bot.telegram
+          .sendMessage(adminBootstrapId, message, { parse_mode: "HTML" })
+          .catch((err) =>
+            console.error(
+              `[bot] couldn't forward text from user ${user.id} to admin:`,
+              err,
+            ),
+          );
+      }
+    }
   }
 
   // --- Registration + status enforcement ---
