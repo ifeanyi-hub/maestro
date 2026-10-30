@@ -355,7 +355,7 @@ async function main() {
     evmHttpProvider: evmHttp,
     evmFactoryAddress: config.uniswapV2Factory,
   });
-  await launchWithRetry(bot, config.telegramOwnerId);
+  await launchWithRetry(bot);
   console.log("maestro running.");
 }
 
@@ -368,13 +368,12 @@ async function main() {
  */
 async function launchWithRetry(
   bot: ReturnType<typeof createBot>,
-  adminId: string,
   attempts = 5,
   delayMs = 3000
 ): Promise<void> {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      await configureBotCommands(bot, adminId);
+      await configureBotCommands(bot);
       await bot.launch();
       return;
     } catch (err) {

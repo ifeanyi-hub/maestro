@@ -162,13 +162,20 @@ const ADMIN_COMMANDS = [
   { command: "admin_presale_remove", description: "Remove a presale entry" },
 ];
 
-export async function configureBotCommands(
-  bot: Telegraf,
-  adminId: string,
-): Promise<void> {
+type CommandBot = {
+  telegram: Pick<Telegraf["telegram"], "setMyCommands">;
+};
+
+export async function configureBotCommands(bot: CommandBot): Promise<void> {
   await bot.telegram.setMyCommands(USER_COMMANDS);
+}
+
+async function configureAdminBotCommands(
+  bot: Telegraf,
+  adminChatId: number,
+): Promise<void> {
   await bot.telegram.setMyCommands([...USER_COMMANDS, ...ADMIN_COMMANDS], {
-    scope: { type: "chat", chat_id: adminId },
+    scope: { type: "chat", chat_id: adminChatId },
   });
 }
 
@@ -704,6 +711,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
   };
 
   const pendingInputs = new Map<number, PendingInput>();
+  const configuredAdminCommandChats = new Set<number>();
   const killSwitchConfirmations = new Map<
     string,
     { userId: string; enabled: boolean; expiresAt: number }
@@ -951,6 +959,21 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
 
   async function showStartScreen(ctx: any) {
     const user = ctx.dbUser;
+    if (
+      user?.role === "admin" &&
+      ctx.chat?.type === "private" &&
+      !configuredAdminCommandChats.has(ctx.chat.id)
+    ) {
+      try {
+        await configureAdminBotCommands(bot, ctx.chat.id);
+        configuredAdminCommandChats.add(ctx.chat.id);
+      } catch (err) {
+        console.error(
+          `[bot] couldn't register admin commands for chat ${ctx.chat.id}:`,
+          err,
+        );
+      }
+    }
     const requiresWallet =
       !ctx.from || listWalletsFor(db, String(ctx.from.id)).length === 0;
     return ctx.reply(
