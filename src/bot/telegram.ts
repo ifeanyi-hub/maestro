@@ -121,6 +121,10 @@ import {
   rateLimitTelegramMessages,
   TelegramMessageLimiter,
 } from "./telegram-message-limiter.js";
+import {
+  routeNoWalletCallback,
+  routeNoWalletCommand,
+} from "./no-wallet-routing.js";
 
 const USER_COMMANDS = [
   { command: "start", description: "Open the Maestro menu" },
@@ -523,10 +527,13 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
     )?.data;
     const isOnboardingAction =
       callbackData === "home" ||
-      callbackData === "home_help" ||
       callbackData === "home_wallets" ||
+      callbackData === "home_chains" ||
+      callbackData === "wallets_list" ||
+      callbackData === "wallets_return" ||
       callbackData === "wallets_import" ||
       callbackData === "flow_cancel" ||
+      callbackData?.startsWith("wchain_") ||
       callbackData?.startsWith("onboard_chain_") ||
       callbackData?.startsWith("onboard_import_");
     const hasWallet = listWalletsFor(db, user.telegram_id).length > 0;
@@ -548,14 +555,37 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
       return ctx.reply(notice);
     }
 
-    if (
-      callbackData &&
-      user.role !== "admin" &&
-      !hasWallet &&
-      !isOnboardingAction
-    ) {
-      await ctx.answerCbQuery();
-      return showOnboardingNetworkPicker(ctx);
+    if (user.role !== "admin" && !hasWallet) {
+      if (callbackData) {
+        const route = routeNoWalletCallback(callbackData);
+        if (route === "continue") return next();
+        if (route === "welcome") {
+          await ctx.answerCbQuery();
+          return showStartScreen(ctx);
+        }
+        if (route === "wallet-import" || route === "trading") {
+          await ctx.answerCbQuery();
+          return showOnboardingNetworkPicker(ctx);
+        }
+        await ctx.answerCbQuery("Not implemented yet.", { show_alert: true });
+        return showStartScreen(ctx);
+      }
+
+      const text = (ctx.message as any)?.text as string | undefined;
+      const command = text?.match(/^\/([a-z0-9_]+)/i)?.[1]?.toLowerCase();
+      if (command) {
+        const route = routeNoWalletCommand(command);
+        if (route === "continue") return next();
+        if (route === "welcome") return showStartScreen(ctx);
+        if (route === "wallet-import" || route === "trading") {
+          return showOnboardingNetworkPicker(ctx);
+        }
+        await ctx.reply("Not implemented yet.");
+        return showStartScreen(ctx);
+      }
+      if (text && !text.startsWith("/") && detectTradeToken(text)) {
+        return showOnboardingNetworkPicker(ctx);
+      }
     }
 
     if (user.status === "pending") {
@@ -573,14 +603,16 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
         pendingImport.has(ctx.from.id);
       if (!isOnboardingCommand && !isOnboardingAction && !isImportText) {
         if (ctx.callbackQuery) {
+          if (!hasWallet) return showStartScreen(ctx);
           await ctx.answerCbQuery(
-            "Import a wallet and wait for admin approval to unlock this feature.",
+            "Waiting for admin approval.",
             { show_alert: true },
           );
           return;
         }
+        if (!hasWallet) return showStartScreen(ctx);
         return ctx.reply(
-          "Import a wallet and wait for admin approval to unlock this feature.",
+          "Waiting for admin approval.",
         );
       }
     }
@@ -1115,13 +1147,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
     const sourceWallet = getPrimaryWallet(db, userId, fromChain);
     const destinationWallet = getPrimaryWallet(db, userId, toChain);
     if (!sourceWallet || !destinationWallet) {
-      await ctx.reply(
-        `A primary ${fromChain === "solana" ? "Solana" : "EVM"} wallet and a primary ${toChain === "solana" ? "Solana" : "EVM"} wallet are required for a route quote.`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback("💼 Manage wallets", "home_wallets")],
-          [Markup.button.callback("↩️ Home", "home")],
-        ]),
-      );
+      await showOnboardingNetworkPicker(ctx);
       return;
     }
     pendingInputs.set(ctx.from!.id, {
@@ -1195,6 +1221,9 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
 
   bot.action("home_chains", async (ctx) => {
     await ctx.answerCbQuery();
+    if (listWalletsFor(db, String(ctx.from!.id)).length === 0) {
+      return showOnboardingNetworkPicker(ctx);
+    }
     await ctx.reply(
       "Choose a chain to manage its wallets. You can also buy or sell on either supported chain.",
       Markup.inlineKeyboard([
@@ -1332,6 +1361,9 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
     await ctx.answerCbQuery();
     const side = ctx.match[1] as "buy" | "sell";
     const chain = ctx.match[2] as "solana" | "evm";
+    if (!getPrimaryWallet(db, String(ctx.from!.id), chain)) {
+      return showOnboardingNetworkPicker(ctx);
+    }
     const step: Extract<PendingInput, { kind: "manual_trade" }>["step"] =
       chain === "evm" || side === "sell" ? "asset" : "pool";
     const pending = {
@@ -1358,6 +1390,11 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
       return ctx.answerCbQuery(
         "This quote is unavailable or belongs to another user.",
       );
+    }
+    if (!getPrimaryWallet(db, quote.userId, quote.chain)) {
+      manualTradeQuotes.delete(id);
+      await ctx.answerCbQuery();
+      return showOnboardingNetworkPicker(ctx);
     }
     manualTradeQuotes.delete(id);
     await ctx.answerCbQuery();
@@ -2023,14 +2060,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
     const chain = ctx.match[1] as "solana" | "evm";
     const userId = String(ctx.from!.id);
     if (!getPrimaryWallet(db, userId, chain)) {
-      await ctx.reply(
-        `Add a primary ${chain === "solana" ? "Solana" : "EVM"} wallet before creating a token snipe.`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback("💼 Manage wallets", "home_wallets")],
-          [Markup.button.callback("↩️ Auto Snipe", "home_snipe")],
-        ]),
-      );
-      return;
+      return showOnboardingNetworkPicker(ctx);
     }
     pendingInputs.set(ctx.from!.id, { kind: "auto_snipe", chain, step: "asset" });
     await ctx.reply(
@@ -2156,6 +2186,9 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
     pendingInputs.delete(ctx.from!.id);
     for (const [id, quote] of manualTradeQuotes) {
       if (quote.userId === String(ctx.from!.id)) manualTradeQuotes.delete(id);
+    }
+    if (listWalletsFor(db, String(ctx.from!.id)).length === 0) {
+      return showStartScreen(ctx);
     }
     const user = (ctx as any).dbUser;
     await ctx.reply(
@@ -2656,12 +2689,14 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
     if ((ctx as any).dbUser?.status === "pending") {
       const hasWallet =
         listWalletsFor(db, String(ctx.from!.id)).length > 0;
+      if (!hasWallet) return showStartScreen(ctx);
       return ctx.reply(
-        hasWallet
-          ? "Your wallet is imported. Wait for admin approval before using account features."
-          : "Choose a network and import a wallet to request admin approval.",
-        hasWallet ? undefined : onboardingKeyboard(),
+        "Waiting for admin approval.",
+        onboardingKeyboard(),
       );
+    }
+    if (listWalletsFor(db, String(ctx.from!.id)).length === 0) {
+      return showStartScreen(ctx);
     }
     return ctx.reply("Wallets:", walletsMenu);
   });
@@ -2809,13 +2844,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
     const userId = String(ctx.from!.id);
     const wallet = getPrimaryWallet(db, userId, token.chain);
     if (!wallet) {
-      await ctx.reply(
-        `Import a primary ${token.chain === "solana" ? "Solana" : "Ethereum"} wallet before starting a token trade.`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback("💼 Manage wallets", "home_wallets")],
-          [Markup.button.callback("↩️ Home", "home")],
-        ]),
-      );
+      await showOnboardingNetworkPicker(ctx);
       return true;
     }
 
@@ -2988,14 +3017,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
           pendingInput.toChain,
         );
         if (!sourceWallet || !destinationWallet) {
-          await ctx.reply(
-            "Both primary wallets are required. Manage your wallets, then request a new quote.",
-            Markup.inlineKeyboard([
-              [Markup.button.callback("💼 Manage wallets", "home_wallets")],
-              [Markup.button.callback("↩️ Home", "home")],
-            ]),
-          );
-          return;
+          return showStartScreen(ctx);
         }
         try {
           const evmNetwork = await evmProvider.getNetwork();
@@ -3341,6 +3363,10 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
           }
         } else if (!/^\d+(?:\.\d+)?$/.test(input)) {
           return keepPrompt("Enter a positive plain-decimal token amount.");
+        }
+
+        if (!getPrimaryWallet(db, String(ctx.from!.id), pendingInput.chain)) {
+          return showOnboardingNetworkPicker(ctx);
         }
 
         try {
@@ -3985,7 +4011,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
 
   async function replyPortfolio(ctx: any, userId: string) {
     const wallets = listWalletsFor(db, userId);
-    if (wallets.length === 0) return ctx.reply("No wallets yet.", walletsMenu);
+    if (wallets.length === 0) return showStartScreen(ctx);
 
     const lines: string[] = [
       tradingHeading("📊", "Portfolio"),
