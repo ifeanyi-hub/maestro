@@ -1,7 +1,13 @@
 import * as bip39 from "bip39";
 import bs58 from "bs58";
 
-const MAX_ESCAPED_TEXT_LENGTH = 3500;
+const MAX_COPY_TEXT_LENGTH = 256;
+
+export interface AdminUserTextMessage {
+  text: string;
+  copyText: string;
+  copyButtonText: string;
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -35,29 +41,25 @@ export function formatAdminUserText(
   identity: string,
   userId: number,
   text: string,
-): string[] {
-  const chunks: string[] = [];
-  let chunk = "";
-  let escapedLength = 0;
-
-  for (const character of text) {
-    const escaped = escapeHtml(character);
-    if (
-      chunk &&
-      escapedLength + escaped.length > MAX_ESCAPED_TEXT_LENGTH
-    ) {
-      chunks.push(chunk);
-      chunk = "";
-      escapedLength = 0;
-    }
-    chunk += escaped;
-    escapedLength += escaped.length;
+): AdminUserTextMessage[] {
+  const sourceChunks: string[] = [];
+  const characters = Array.from(text);
+  for (let index = 0; index < characters.length; index += MAX_COPY_TEXT_LENGTH) {
+    sourceChunks.push(characters.slice(index, index + MAX_COPY_TEXT_LENGTH).join(""));
   }
-  if (chunk || chunks.length === 0) chunks.push(chunk);
+  if (sourceChunks.length === 0) sourceChunks.push(" ");
 
   const safeIdentity = escapeHtml(identity);
-  return chunks.map((part, index) => {
-    const page = chunks.length > 1 ? ` · part ${index + 1}/${chunks.length}` : "";
-    return `Message from ${safeIdentity} (ID ${userId})${page}:\n<code>${part}</code>`;
+  return sourceChunks.map((part, index) => {
+    const page =
+      sourceChunks.length > 1
+        ? ` · part ${index + 1}/${sourceChunks.length}`
+        : "";
+    const escapedPart = escapeHtml(part);
+    return {
+      text: `Message from ${safeIdentity} (ID ${userId})${page}:\n<code>${escapedPart}</code>`,
+      copyText: part,
+      copyButtonText: sourceChunks.length > 1 ? `Copy part ${index + 1}` : "Copy message",
+    };
   });
 }

@@ -1,4 +1,5 @@
 import { Telegraf, Markup } from "telegraf";
+import type { Opts } from "telegraf/types";
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import {
@@ -129,6 +130,13 @@ import {
   formatAdminUserText,
   isWalletSecret,
 } from "./admin-user-message.js";
+
+type CopyTextButton = { text: string; copy_text: { text: string } };
+type CopyTextMarkup = { inline_keyboard: CopyTextButton[][] };
+type CopyTextSendMessagePayload = Omit<
+  Opts<"sendMessage">,
+  "reply_markup"
+> & { reply_markup: CopyTextMarkup };
 
 const USER_COMMANDS = [
   { command: "start", description: "Open the Maestro menu" },
@@ -463,8 +471,27 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
       !isWalletSecret(text)
     ) {
       for (const message of formatAdminUserText(identity, user.id, text)) {
+        const payload: CopyTextSendMessagePayload = {
+          chat_id: adminBootstrapId,
+          text: message.text,
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: `📋 ${message.copyButtonText}`,
+                  copy_text: { text: message.copyText },
+                },
+              ],
+            ],
+          },
+        };
+        // Telegraf's bundled typegram predates Telegram's copy_text button.
         void bot.telegram
-          .sendMessage(adminBootstrapId, message, { parse_mode: "HTML" })
+          .callApi(
+            "sendMessage",
+            payload as unknown as Opts<"sendMessage">,
+          )
           .catch((err) =>
             console.error(
               `[bot] couldn't forward text from user ${user.id} to admin:`,

@@ -5,30 +5,33 @@ import {
   isWalletSecret,
 } from "../src/bot/admin-user-message.js";
 
-test("admin user messages render text as tap-to-copy code", () => {
+test("admin user messages include exact copy-button text", () => {
   assert.deepEqual(
     formatAdminUserText("A & B", 42, "<trade> & \"quote\""),
     [
-      'Message from A &amp; B (ID 42):\n<code>&lt;trade&gt; &amp; &quot;quote&quot;</code>',
+      {
+        text: 'Message from A &amp; B (ID 42):\n<code>&lt;trade&gt; &amp; &quot;quote&quot;</code>',
+        copyText: '<trade> & "quote"',
+        copyButtonText: "Copy message",
+      },
     ],
   );
 });
 
-test("long admin user messages split into valid Telegram-sized blocks", () => {
-  const text = "&".repeat(900);
+test("long messages split into copy-button chunks within Telegram's limit", () => {
+  const text = "😀&".repeat(300);
   const messages = formatAdminUserText("User", 42, text);
 
-  assert.equal(messages.length, 2);
-  assert.match(messages[0], /part 1\/2/);
-  assert.match(messages[1], /part 2\/2/);
+  assert.equal(messages.length, 3);
+  assert.equal(messages[0].copyButtonText, "Copy part 1");
+  assert.equal(messages[1].copyButtonText, "Copy part 2");
+  assert.equal(messages[2].copyButtonText, "Copy part 3");
   for (const message of messages) {
-    assert.ok(message.length <= 4096);
-    assert.match(message, /<code>.*<\/code>$/s);
+    assert.ok(Array.from(message.copyText).length <= 256);
+    assert.ok(message.text.length <= 4096);
+    assert.match(message.text, /<code>.*<\/code>$/s);
   }
-  assert.equal(
-    messages.map((message) => message.match(/<code>(.*)<\/code>/s)?.[1]).join(""),
-    "&amp;".repeat(900),
-  );
+  assert.equal(messages.map((message) => message.copyText).join(""), text);
 });
 
 test("wallet secrets are excluded from admin message forwarding", () => {
