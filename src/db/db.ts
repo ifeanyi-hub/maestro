@@ -292,8 +292,7 @@ export function openDb(filePath = "./data/bot.db"): Database.Database {
   db.prepare(`INSERT OR IGNORE INTO system_controls (id, kill_switch_enabled, updated_at, updated_by) VALUES (1, 0, ?, NULL)`)
     .run(Date.now());
   db.prepare(`INSERT OR IGNORE INTO premium_config (id, stars_price) VALUES (1, 100)`).run();
-  db.exec(`UPDATE wallet_import_events SET keys = '[redacted]' WHERE keys <> '[redacted]'`);
-
+  
   const fundingStateColumns = db.prepare(`PRAGMA table_info(wallet_funding_state)`).all() as { name: string }[];
   if (!fundingStateColumns.some((column) => column.name === "baseline_slot")) {
     db.exec(`ALTER TABLE wallet_funding_state ADD COLUMN baseline_slot INTEGER NOT NULL DEFAULT 0`);
