@@ -17,6 +17,8 @@ import {
   Provider,
 } from "ethers";
 import { WalletVault } from "../vault/wallet-vault.js";
+import { getRaydium } from "../chains/solana/raydiumClient.js";
+import { getPoolIdByMint } from "../chains/solana/poolKeys.js";
 import {
   importMnemonicWallet,
   importRawSolanaWallet,
@@ -112,6 +114,7 @@ import {
 } from "./network-catalog.js";
 import { transitionMenuReply } from "./menu-transition.js";
 import { getNativeBridgeQuote } from "../bridge/lifi.js";
+import { detectTradeToken } from "./trade-input.js";
 import type { Wallet as EvmWallet } from "ethers";
 import { beginTrackedTrade } from "../transactions/tracker.js";
 import {
@@ -215,19 +218,19 @@ function homeKeyboard(isAdmin: boolean) {
     ],
     [
       Markup.button.callback("🤖 Copytrade", "home_copytrade"),
-      Markup.button.callback("🔔 Presales", "home_presales"),
-    ],
-    [
-      Markup.button.callback("🎯 Auto Snipe", "home_snipe"),
-      Markup.button.callback("🕒 Active Orders", "home_orders"),
+      Markup.button.callback("🕓 Active Orders", "home_orders"),
     ],
     [
       Markup.button.callback("📈 Positions", "wallets_portfolio"),
+      Markup.button.callback("🎯 Auto Snipe", "home_snipe"),
+    ],
+    [
+      Markup.button.callback("🌉 Bridge", "home_bridge"),
       Markup.button.callback("⭐ Premium", "home_premium"),
     ],
     [
       Markup.button.callback("🤝 Referral", "home_referrals"),
-      Markup.button.callback("🌉 Bridge", "home_bridge"),
+      Markup.button.callback("🔔 Presales", "home_presales"),
     ],
     [Markup.button.callback("⚡ BUY & SELL NOW", "home_trade")],
     [Markup.button.callback("❔ Help", "home_help")],
@@ -2796,6 +2799,68 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
       });
   }
 
+  async function beginDirectTokenTrade(
+    ctx: any,
+    input: string,
+  ): Promise<boolean> {
+    const token = detectTradeToken(input);
+    if (!token) return false;
+
+    const userId = String(ctx.from!.id);
+    const wallet = getPrimaryWallet(db, userId, token.chain);
+    if (!wallet) {
+      await ctx.reply(
+        `Import a primary ${token.chain === "solana" ? "Solana" : "Ethereum"} wallet before starting a token trade.`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback("💼 Manage wallets", "home_wallets")],
+          [Markup.button.callback("↩️ Home", "home")],
+        ]),
+      );
+      return true;
+    }
+
+    const values: ManualTradeDraft = { asset: token.address };
+    if (token.chain === "solana") {
+      try {
+        const signingWallet = loadSolanaKeypair(vault, db, userId, wallet.label);
+        if (!signingWallet) {
+          throw new Error("Couldn't unlock the primary Solana wallet.");
+        }
+        const raydium = await getRaydium(solConnection, signingWallet);
+        const poolId = await getPoolIdByMint(raydium, token.address);
+        if (!poolId) {
+          await ctx.reply(
+            "No Raydium SOL pool was found for this token. Only tokens with a supported Raydium pool can be traded here.",
+          );
+          return true;
+        }
+        values.poolId = poolId;
+      } catch (error) {
+        console.error(
+          `[trade] couldn't resolve Solana token ${token.address} for ${userId}:`,
+          error,
+        );
+        await ctx.reply(
+          `Couldn't find a Solana trade route: ${error instanceof Error ? error.message : String(error)}.`,
+        );
+        return true;
+      }
+    }
+
+    pendingInputs.set(ctx.from!.id, {
+      kind: "manual_trade",
+      chain: token.chain,
+      side: "buy",
+      step: "amount",
+      values,
+    });
+    await ctx.reply(
+      `Token recognized on ${token.chain === "solana" ? "Solana" : "Ethereum"}.\n${token.address}\n\nEnter the amount to spend in ${token.chain === "solana" ? "SOL" : "ETH"} to request a quote. No trade will be submitted without your confirmation.`,
+      cancelPromptKeyboard,
+    );
+    return true;
+  }
+
   // Catches the seed-phrase/private-key text message that follows an import action.
   // Must skip slash commands so it doesn't swallow them.
   bot.on("text", async (ctx, next) => {
@@ -3672,6 +3737,14 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
         }
         return;
       }
+    }
+
+    if (
+      !pendingInputs.has(ctx.from!.id) &&
+      !ctx.message.text.startsWith("/") &&
+      (await beginDirectTokenTrade(ctx, ctx.message.text))
+    ) {
+      return;
     }
 
     return next();

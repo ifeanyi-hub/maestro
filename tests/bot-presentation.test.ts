@@ -41,27 +41,25 @@ test("start welcome stays consistent while explaining account access", () => {
   const pendingWelcome = startWelcome("justincallz", true, true);
 
   assert.equal(
-    activeWelcome.split("\n").slice(0, 6).join("\n"),
-    pendingWelcome.split("\n").slice(0, 6).join("\n"),
+    activeWelcome.text.split("\n").slice(0, 8).join("\n"),
+    pendingWelcome.text.split("\n").slice(0, 8).join("\n"),
   );
-  assert.match(activeWelcome, /✨ Welcome, justincallz, to Maestro/);
-  assert.match(activeWelcome, /curated presales/);
-  assert.match(activeWelcome, /quote-only/);
-  assert.match(activeWelcome, /risk limits/);
-  assert.match(activeWelcome, /price signals/);
-  assert.match(activeWelcome, /BUY & SELL NOW/);
-  assert.match(activeWelcome, /Choose a section below to get started\./);
-  assert.match(pendingWelcome, /✨ Welcome, justincallz, to Maestro/);
-  assert.match(pendingWelcome, /Choose a network and import a wallet/);
-  assert.match(pendingWelcome, /admin must approve your account/);
+  assert.match(activeWelcome.text, /⭐️ Welcome to Maestro, the one-stop solution/);
+  assert.match(activeWelcome.text, /Chains: View available networks/);
+  assert.match(activeWelcome.text, /Wallets: Import and manage wallets/);
+  assert.match(activeWelcome.text, /Global Settings: Customize risk and trading limits/);
+  assert.match(activeWelcome.text, /Active Orders: Review active buy\/sell limit orders/);
+  assert.match(activeWelcome.text, /Positions: Monitor your portfolio and recent trades/);
+  assert.match(activeWelcome.text, /Paste a token CA to start a quoted trade/);
+  assert.ok(activeWelcome.entities?.some((entity) => entity.type === "bold"));
+  assert.match(activeWelcome.text, /Choose a section below to get started\./);
+  assert.match(pendingWelcome.text, /Choose a network and import a wallet/);
+  assert.match(pendingWelcome.text, /admin must approve your account/);
   assert.match(
-    startWelcome("justincallz", false, true),
+    startWelcome("justincallz", false, true).text,
     /import a wallet to unlock account features/,
   );
-  assert.equal(
-    startWelcome("  ", false).startsWith("✨ Welcome, trader, to Maestro"),
-    true,
-  );
+  assert.match(startWelcome("  ", false).text, /⭐️ Welcome to Maestro/);
 });
 
 test("onboarding shows twenty unique networks without claiming preview support", () => {

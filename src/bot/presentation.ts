@@ -1,4 +1,4 @@
-import { FmtString } from "telegraf/format";
+import { bold, fmt, join, FmtString } from "telegraf/format";
 
 const SECTION_RULE = "━━━━━━━━━━━━━━━━";
 
@@ -36,26 +36,40 @@ export function styleBotResponse(
 }
 
 export function startWelcome(
-  firstName: string,
+  _firstName: string,
   requiresApproval: boolean,
   requiresWallet = requiresApproval,
-): string {
-  const greeting = firstName.trim() || "trader";
-  return [
-    `✨ Welcome, ${greeting}, to Maestro — your on-chain trading desk!`,
-    "",
-    "Explore chain options; manage wallets and portfolio; trade with fresh quotes and confirmation; set risk limits; create token snipes and limit orders; configure copy trading; view positions, recent trades, and price signals; subscribe to Premium for price alerts and realized P&L; browse curated presales; track referrals; request quote-only bridge routes. Admins also get moderation and stats tools.",
-    "",
-    "⚡ For a quick trade, tap BUY & SELL NOW. Every trade needs a fresh quote and your confirmation. Bridge routes are quote-only; no bridge transaction is signed or submitted.",
-    "Solana and Ethereum mainnet are connected. Other EVM networks in the chain picker are preview-only; network-specific transactions are not enabled yet.",
-    requiresApproval
-      ? requiresWallet
-        ? "Choose a network and import a wallet. An admin must approve your account before features unlock."
-        : "Your wallet is imported. Wait for admin approval before using account features."
-      : requiresWallet
-        ? "Choose a network and import a wallet to unlock account features."
-        : "Choose a section below to get started.",
-  ].join("\n");
+): FmtString<string> {
+  const featureLines = [
+    fmt`🔗 ${bold("Chains:")} View available networks.`,
+    fmt`💳 ${bold("Wallets:")} Import and manage wallets.`,
+    fmt`⚙️ ${bold("Global Settings:")} Customize risk and trading limits.`,
+    fmt`🕓 ${bold("Active Orders:")} Review active buy/sell limit orders.`,
+    fmt`📈 ${bold("Positions:")} Monitor your portfolio and recent trades.`,
+    fmt`📡 ${bold("More:")} Signals, copy trading, auto-snipe, bridge quotes, Premium, presales, and referrals.`,
+  ];
+  const accessNotice = requiresApproval
+    ? requiresWallet
+      ? "Choose a network and import a wallet. An admin must approve your account before features unlock."
+      : "Your wallet is imported. Wait for admin approval before using account features."
+    : requiresWallet
+      ? "Choose a network and import a wallet to unlock account features."
+      : "Choose a section below to get started.";
+
+  return join(
+    [
+      fmt`⭐️ Welcome to Maestro, the ${bold("one-stop")} solution for all your trading needs!`,
+      "",
+      ...featureLines,
+      "",
+      fmt`⚡ ${bold("Paste a token CA to start a quoted trade, or tap BUY & SELL NOW.")}`,
+      "Every trade shows a fresh quote and requires your confirmation.",
+      "Solana and Ethereum mainnet are connected. Other EVM networks are preview-only.",
+      "",
+      accessNotice,
+    ],
+    "\n",
+  );
 }
 
 export function tradingHeading(icon: string, title: string): string {
