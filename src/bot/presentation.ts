@@ -63,8 +63,6 @@ export function startWelcome(
       ...featureLines,
       "",
       fmt`⚡ ${bold("Paste a token CA to start a quoted trade, or tap BUY & SELL NOW.")}`,
-      "Every trade shows a fresh quote and requires your confirmation.",
-      "Solana and Ethereum mainnet are connected. Other EVM networks are preview-only.",
       "",
       accessNotice,
     ],
