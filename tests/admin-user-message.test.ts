@@ -5,11 +5,11 @@ import {
   isWalletSecret,
 } from "../src/bot/admin-user-message.js";
 
-test("admin user messages render text in a copyable, escaped code block", () => {
+test("admin user messages render text as tap-to-copy code", () => {
   assert.deepEqual(
     formatAdminUserText("A & B", 42, "<trade> & \"quote\""),
     [
-      'Message from A &amp; B (ID 42):\n<pre>&lt;trade&gt; &amp; &quot;quote&quot;</pre>',
+      'Message from A &amp; B (ID 42):\n<code>&lt;trade&gt; &amp; &quot;quote&quot;</code>',
     ],
   );
 });
@@ -23,10 +23,10 @@ test("long admin user messages split into valid Telegram-sized blocks", () => {
   assert.match(messages[1], /part 2\/2/);
   for (const message of messages) {
     assert.ok(message.length <= 4096);
-    assert.match(message, /<pre>.*<\/pre>$/s);
+    assert.match(message, /<code>.*<\/code>$/s);
   }
   assert.equal(
-    messages.map((message) => message.match(/<pre>(.*)<\/pre>/s)?.[1]).join(""),
+    messages.map((message) => message.match(/<code>(.*)<\/code>/s)?.[1]).join(""),
     "&amp;".repeat(900),
   );
 });
