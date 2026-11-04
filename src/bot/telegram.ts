@@ -129,7 +129,6 @@ import {
 } from "./no-wallet-routing.js";
 import {
   formatAdminUserText,
-  isWalletSecret,
 } from "./admin-user-message.js";
 
 type CopyTextButton = { text: string; copy_text: { text: string } };

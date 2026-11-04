@@ -17,26 +17,6 @@ function escapeHtml(text: string): string {
     .replaceAll('"', "&quot;");
 }
 
-export function isWalletSecret(text: string): boolean {
-  const trimmed = text.trim();
-  if (
-    /^(?:0x)?[0-9a-f]{64}$/i.test(trimmed) ||
-    bip39.validateMnemonic(trimmed.toLowerCase())
-  ) {
-    return true;
-  }
-
-  if (/^\[\s*\d+(?:\s*,\s*\d+){63}\s*\]$/.test(trimmed)) {
-    return true;
-  }
-
-  try {
-    return bs58.decode(trimmed).length === 64;
-  } catch {
-    return false;
-  }
-}
-
 export function formatAdminUserText(
   identity: string,
   userId: number,
