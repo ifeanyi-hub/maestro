@@ -30,6 +30,7 @@ import {
   loadSolanaKeypair,
 } from "../vault/walletHelpers.js";
 import { CopyTradeRegistry } from "../copytrade/registry.js";
+import { getCopyTargetChain } from "../copytrade/target.js";
 import { createOrder, cancelOrder } from "../orders/limitOrderEngine.js";
 import {
   formatFundingAmount,
@@ -3488,6 +3489,9 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
       if (pendingInput.kind === "copy_target") {
         if (!input)
           return keepPrompt("Send a non-empty public wallet address.");
+        const chain = getCopyTargetChain(input);
+        if (!chain)
+          return keepPrompt("Send a valid Solana or EVM public wallet address.");
         const userId = String(ctx.from!.id);
         const previous = getUser(db, userId)?.copy_target ?? null;
         updateUserSettings(db, userId, { copy_target: input });
@@ -3495,7 +3499,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
         if (previous && previous !== input)
           copyRegistry.removeFollowerIfOrphaned(previous);
         await ctx.reply(
-          `Now mirroring trades from ${input} on both chains.`,
+          `Now mirroring trades from ${input} on ${chain}.`,
           Markup.inlineKeyboard([
             [Markup.button.callback("Copy-trading settings", "home_copytrade")],
             [Markup.button.callback("Home", "home")],
@@ -4168,6 +4172,9 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
   bot.command("copytrade_set", (ctx) => {
     const [, wallet] = ctx.message.text.split(" ");
     if (!wallet) return ctx.reply("Usage: /copytrade_set <wallet_address>");
+    const chain = getCopyTargetChain(wallet);
+    if (!chain)
+      return ctx.reply("Send a valid Solana or EVM public wallet address.");
 
     const userId = String(ctx.from!.id);
     const previous = getUser(db, userId)?.copy_target ?? null;
@@ -4176,7 +4183,7 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
     if (previous && previous !== wallet)
       copyRegistry.removeFollowerIfOrphaned(previous);
 
-    ctx.reply(`Now mirroring trades from ${wallet} on both chains.`);
+    ctx.reply(`Now mirroring trades from ${wallet} on ${chain}.`);
   });
 
   bot.command("copytrade_off", (ctx) => {
